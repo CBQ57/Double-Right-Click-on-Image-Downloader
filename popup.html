@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Settings</title>
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #fdfdfd;
+      margin: 0;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 8px;
+    }
+    h2 {
+      font-size: 16px;
+      margin: 0;
+      color: #333;
+    }
+    #langSelect {
+      width: auto;
+      padding: 4px;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #555;
+    }
+    select, input[type="number"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+    input:disabled {
+      background: #eee;
+      color: #999;
+    }
+    .flex-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .checkbox-label {
+      margin: 0;
+      font-weight: normal;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .status {
+      font-size: 13px;
+      color: #27ae60;
+      text-align: center;
+      min-height: 18px;
+      margin-top: 12px;
+      opacity: 0;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .status.show {
+      opacity: 1;
+    }
+    .hint {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2 data-i18n="title">Download Settings</h2>
+    <select id="langSelect">
+      <option value="en">English</option>
+      <option value="jp">日本語</option>
+    </select>
+  </div>
+  
+  <div class="form-group">
+    <label for="triggerAction" data-i18n="lblTrigger">Download Trigger Action</label>
+    <select id="triggerAction">
+      <option value="double_right" data-i18n="trigDbRight">Double Right-Click</option>
+      <option value="single_right" data-i18n="trigSgRight">Single Right-Click</option>
+      <option value="double_left" data-i18n="trigDbLeft">Double Left-Click</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="aspectRatio" data-i18n="lblAspect">Crop Aspect Ratio & Style</label>
+    <select id="aspectRatio">
+      <option value="1:1" data-i18n="optIos">1:1 (iOS App Icon)</option>
+      <option value="1:1_sns" data-i18n="optSns">1:1 (SNS Round Icon)</option>
+      <option value="1:1_sq" data-i18n="optSq">1:1 (Square)</option>
+      <option value="16:9" data-i18n="opt169">16:9 (Landscape)</option>
+      <option value="4:3" data-i18n="opt43">4:3 (Landscape)</option>
+      <option value="3:4" data-i18n="opt34">3:4 (Portrait)</option>
+      <option value="9:16" data-i18n="opt916">9:16 (Portrait)</option>
+      <option value="original" data-i18n="optOrig">Original (No Crop)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="iconSize" data-i18n="lblSize">Base Size / Longest Side (px)</label>
+    <div class="flex-row">
+      <input type="number" id="iconSize" value="1024" min="16" max="8192" step="1">
+      <label class="checkbox-label">
+        <input type="checkbox" id="originalSize"> <span data-i18n="lblOrigSize">Original Size</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label for="borderRadius" data-i18n="lblRadius">Corner Radius (%)</label>
+    <input type="number" id="borderRadius" value="22.5" min="0" max="50" step="0.1">
+    <div class="hint" data-i18n="lblHint">Hint: iOS icon is ~22.5%, SNS round icon is 50%</div>
+  </div>
+
+  <div id="status" class="status" data-i18n="saved">Saved!</div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
