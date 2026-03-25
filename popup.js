@@ -1,10 +1,6 @@
 const dict = {
   en: {
     title: "Download Settings",
-    lblTrigger: "Download Trigger Action",
-    trigDbRight: "Double Right-Click",
-    trigSgRight: "Single Right-Click",
-    trigDbLeft: "Double Left-Click",
     lblAspect: "Crop Aspect Ratio & Style",
     optIos: "1:1 (iOS App Icon)",
     optSns: "1:1 (SNS Round Icon)",
@@ -22,10 +18,6 @@ const dict = {
   },
   jp: {
     title: "ダウンロード設定",
-    lblTrigger: "ダウンロードのトリガー",
-    trigDbRight: "ダブル右クリック",
-    trigSgRight: "シングル右クリック",
-    trigDbLeft: "ダブル左クリック",
     lblAspect: "切り抜きのアスペクト比・スタイル",
     optIos: "1:1 (iOSアプリアイコン)",
     optSns: "1:1 (SNS丸アイコン)",
@@ -45,12 +37,32 @@ const dict = {
 
 document.addEventListener('DOMContentLoaded', () => {
   const langSelect = document.getElementById('langSelect');
-  const triggerSelect = document.getElementById('triggerAction');
   const aspectSelect = document.getElementById('aspectRatio');
   const sizeInput = document.getElementById('iconSize');
   const originalSizeCheckbox = document.getElementById('originalSize');
   const radiusInput = document.getElementById('borderRadius');
   const statusDiv = document.getElementById('status');
+  const themeToggle = document.getElementById('themeToggle');
+
+  // ── テーマ管理 ──
+  function applyTheme(theme) {
+    if (theme === 'dark') {
+      document.body.classList.add('dark');
+      themeToggle.textContent = '☀️';
+      themeToggle.title = 'Switch to Light mode';
+    } else {
+      document.body.classList.remove('dark');
+      themeToggle.textContent = '🌙';
+      themeToggle.title = 'Switch to Dark mode';
+    }
+  }
+
+  themeToggle.addEventListener('click', () => {
+    const isDark = document.body.classList.contains('dark');
+    const newTheme = isDark ? 'light' : 'dark';
+    applyTheme(newTheme);
+    chrome.storage.local.set({ theme: newTheme });
+  });
 
   function updateLanguage(lang) {
     document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -68,19 +80,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load current settings from storage
   chrome.storage.local.get({
     lang: 'en',
-    triggerAction: 'double_right',
+    theme: 'dark',
     aspectRatio: '1:1',
     iconSize: 1024,
     useOriginalSize: false,
     borderRadius: 22.5
   }, (items) => {
+    applyTheme(items.theme);
     langSelect.value = items.lang;
-    triggerSelect.value = items.triggerAction;
     aspectSelect.value = items.aspectRatio;
     sizeInput.value = items.iconSize;
     originalSizeCheckbox.checked = items.useOriginalSize;
     radiusInput.value = items.borderRadius;
-    
+
     // Initial UI state
     sizeInput.disabled = items.useOriginalSize;
     updateLanguage(items.lang);
@@ -88,7 +100,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function saveSettings() {
     const lang = langSelect.value;
-    const triggerAction = triggerSelect.value;
     const aspectRatio = aspectSelect.value;
     const iconSize = parseInt(sizeInput.value, 10) || 1024;
     const useOriginalSize = originalSizeCheckbox.checked;
@@ -100,7 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chrome.storage.local.set({
       lang,
-      triggerAction,
       aspectRatio,
       iconSize,
       useOriginalSize,
@@ -118,11 +128,12 @@ document.addEventListener('DOMContentLoaded', () => {
       radiusInput.value = 50;
       sizeInput.value = 400; // typical default size for SNS
       originalSizeCheckbox.checked = false;
-    } else if (e.target.value === '1:1' /* backward compat ios */) {
+    } else if (e.target.value === '1:1' /* iOS */) {
       radiusInput.value = 22.5;
       sizeInput.value = 1024;
       originalSizeCheckbox.checked = false;
-    } else if (e.target.value === '1:1_sq') {
+    } else {
+      // 角丸なし（正方形・各アスペクト比・オリジナルなど）
       radiusInput.value = 0;
     }
     saveSettings();
@@ -130,7 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Handle immediate change events (for select/checkbox)
   langSelect.addEventListener('change', saveSettings);
-  triggerSelect.addEventListener('change', saveSettings);
   originalSizeCheckbox.addEventListener('change', saveSettings);
 
   // Debounced input handlers for number inputs
