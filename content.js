@@ -127,26 +127,22 @@
     }, 200);
   }
 
-  let config = {
-    triggerAction: 'double_right',
-    lang: 'en'
-  };
+  // ダウンロードトリガーはダブル右クリック固定
+  let lang = 'en';
 
-  chrome.storage.local.get({ triggerAction: 'double_right', lang: 'en' }, (res) => {
-    config.triggerAction = res.triggerAction;
-    config.lang = res.lang;
+  chrome.storage.local.get({ lang: 'en' }, (res) => {
+    lang = res.lang;
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
-      if (changes.triggerAction) config.triggerAction = changes.triggerAction.newValue;
-      if (changes.lang) config.lang = changes.lang.newValue;
+      if (changes.lang) lang = changes.lang.newValue;
     }
   });
 
   function triggerDownload(target, x, y) {
     const imageUrl = getImageUrl(target);
-    const isJp = config.lang === 'jp';
+    const isJp = lang === 'jp';
 
     if (imageUrl) {
       flashElement(target);
@@ -170,46 +166,22 @@
     }
   }
 
-  // Handle right-click based triggers
+  // ダブル右クリックでダウンロード
   document.addEventListener('contextmenu', (event) => {
     const target = event.target;
+    const now = Date.now();
+    const timeDiff = now - lastRightClickTime;
+    const sameTarget = (target === lastRightClickTarget);
 
-    if (config.triggerAction === 'double_right') {
-      const now = Date.now();
-      const timeDiff = now - lastRightClickTime;
-      const sameTarget = (target === lastRightClickTarget);
-
-      if (sameTarget && timeDiff < DOUBLE_CLICK_THRESHOLD) {
-        event.preventDefault();
-        event.stopPropagation();
-        triggerDownload(target, event.clientX, event.clientY);
-        lastRightClickTime = 0;
-        lastRightClickTarget = null;
-      } else {
-        lastRightClickTime = now;
-        lastRightClickTarget = target;
-      }
-    } else if (config.triggerAction === 'single_right') {
-      // Only intercept if its an image, otherwise allow normal context menu
-      const imageUrl = getImageUrl(target);
-      if (imageUrl) {
-        event.preventDefault();
-        event.stopPropagation();
-        triggerDownload(target, event.clientX, event.clientY);
-      }
-    }
-  }, true);
-
-  // Handle left-click based triggers
-  document.addEventListener('dblclick', (event) => {
-    if (config.triggerAction === 'double_left') {
-      const target = event.target;
-      const imageUrl = getImageUrl(target);
-      if (imageUrl) {
-        event.preventDefault();
-        event.stopPropagation();
-        triggerDownload(target, event.clientX, event.clientY);
-      }
+    if (sameTarget && timeDiff < DOUBLE_CLICK_THRESHOLD) {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerDownload(target, event.clientX, event.clientY);
+      lastRightClickTime = 0;
+      lastRightClickTarget = null;
+    } else {
+      lastRightClickTime = now;
+      lastRightClickTarget = target;
     }
   }, true);
 })();
