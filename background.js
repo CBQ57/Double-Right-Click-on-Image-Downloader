@@ -4,6 +4,88 @@
  * initiates file downloads via the chrome.downloads API.
  */
 
+// アスペクト比の選択肢
+const RATIO_ITEMS = [
+  { id: 'dl_original', title: 'オリジナルサイズ',  ratio: 'original' },
+  { id: 'dl_1x1',      title: '1:1（正方形）',      ratio: '1:1'      },
+  { id: 'dl_4x3',      title: '4:3',                ratio: '4:3'      },
+  { id: 'dl_3x4',      title: '3:4（縦）',          ratio: '3:4'      },
+  { id: 'dl_16x9',     title: '16:9（横ワイド）',   ratio: '16:9'     },
+  { id: 'dl_9x16',     title: '9:16（縦ワイド）',   ratio: '9:16'     },
+];
+
+// 右クリックメニューの登録
+function setupContextMenu() {
+  chrome.contextMenus.removeAll(() => {
+    // 親メニュー
+    chrome.contextMenus.create({
+      id: 'downloadImage',
+      title: '画像をダウンロード',
+      contexts: ['image'],
+    });
+
+    // サブメニュー（比率ごと）
+    RATIO_ITEMS.forEach(item => {
+      chrome.contextMenus.create({
+        id: item.id,
+        parentId: 'downloadImage',
+        title: item.title,
+        contexts: ['image'],
+      });
+    });
+  });
+}
+
+chrome.runtime.onInstalled.addListener(setupContextMenu);
+chrome.runtime.onStartup.addListener(setupContextMenu);
+
+// 右クリックメニュークリック時の処理
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  const clickedItem = RATIO_ITEMS.find(item => item.id === info.menuItemId);
+  if (clickedItem && info.srcUrl) {
+    const url = info.srcUrl;
+    let originalFilename = getFilenameFromUrl(url);
+    let baseName = originalFilename.includes('.')
+      ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
+      : originalFilename;
+    const filename = `${baseName}.png`;
+
+    chrome.storage.local.get({
+      iconSize: 1024,
+      useOriginalSize: false,
+      borderRadius: 22.5
+    }, (settings) => {
+      // コンテキストメニューで選ばれた比率を上書き
+      settings.aspectRatio = clickedItem.ratio;
+      // オリジナルサイズの場合は useOriginalSize を強制 true
+      if (clickedItem.ratio === 'original') {
+        settings.useOriginalSize = true;
+      }
+
+      processImageToIOSIcon(url, settings).then(dataUrl => {
+        chrome.downloads.download({
+          url: dataUrl,
+          filename: filename,
+          saveAs: false,
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            console.error('Download failed:', chrome.runtime.lastError.message);
+          } else {
+            console.log(`Context menu download started: ${filename} [${clickedItem.ratio}] (ID: ${downloadId})`);
+          }
+        });
+      }).catch(err => {
+        console.error('Image processing failed:', err);
+        chrome.downloads.download({
+          url: url,
+          filename: originalFilename,
+          saveAs: false,
+        });
+      });
+    });
+  }
+});
+
 /**
  * Extract a clean filename from a URL.
  */
