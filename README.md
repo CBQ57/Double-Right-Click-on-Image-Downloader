@@ -16,6 +16,8 @@ A Chrome extension that allows you to easily download and process images from we
     *   **Aspect Ratios**: 1:1 (iOS/SNS/Square), 4:3, 3:4, 16:9, 9:16, and Original.
     *   **Custom Scaling**: Set the pixel size for the longest side or keep the original resolution.
     *   **Corner Radius**: Adjust from 0% to 50% (perfect for round icons).
+       ![0328](https://github.com/user-attachments/assets/39e99c65-c185-4701-b13e-8057b3019693)
+
 *   **Modern UI & UX**:
     *   **Dark Mode**: Automatic and manual toggle for a sleek look.
     *   **Live Preview**: Real-time visual feedback of your crop and radius settings in the popup.
@@ -54,6 +56,7 @@ A Chrome extension that allows you to easily download and process images from we
     *   **右クリックメニューから起動**: 画像を右クリックして **「トリミングして保存」** を選択すると、専用の編集画面が開きます。
     *   **リアルタイム操作**: ドラッグ＆ドロップで切り抜き位置を調整。各アスペクト比に加え、元の比率を維持したまま拡大縮小できる **「オリジナル」** モードも搭載。
     *   **高解像度対応**: 超高画質な画像でも、数学的なバウンディング処理により、画面からはみ出さず常に最適なサイズで快適に編集可能です。
+       ![0328](https://github.com/user-attachments/assets/39e99c65-c185-4701-b13e-8057b3019693)
 *   **自由なスタイリング**:
     *   **アスペクト比**: 1:1 (iOS/SNS/正方形), 4:3, 3:4, 16:9, 9:16, オリジナルに対応。
     *   **サイズ指定**: 長辺のピクセル数を自由に指定、または元の解像度を維持。
