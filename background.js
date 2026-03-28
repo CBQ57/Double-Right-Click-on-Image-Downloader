@@ -4,85 +4,152 @@
  * initiates file downloads via the chrome.downloads API.
  */
 
-// アスペクト比の選択肢
-const RATIO_ITEMS = [
-  { id: 'dl_original', title: 'オリジナルサイズ',  ratio: 'original' },
-  { id: 'dl_1x1',      title: '1:1（正方形）',      ratio: '1:1'      },
-  { id: 'dl_4x3',      title: '4:3',                ratio: '4:3'      },
-  { id: 'dl_3x4',      title: '3:4（縦）',          ratio: '3:4'      },
-  { id: 'dl_16x9',     title: '16:9（横ワイド）',   ratio: '16:9'     },
-  { id: 'dl_9x16',     title: '9:16（縦ワイド）',   ratio: '9:16'     },
-];
+// コンテキストメニュー用 i18n 辞書
+const menuDict = {
+  en: {
+    title: 'Crop Image',
+  },
+  jp: {
+    title: '画像をトリミング',
+  },
+};
 
-// 右クリックメニューの登録
-function setupContextMenu() {
+// ブラウザ言語に基づくデフォルト言語を判定
+function detectDefaultLang() {
+  const uiLang = (chrome.i18n && chrome.i18n.getUILanguage)
+    ? chrome.i18n.getUILanguage()
+    : (navigator.language || 'en');
+  return uiLang.toLowerCase().startsWith('ja') ? 'jp' : 'en';
+}
+
+// 右クリックメニューの登録（言語対応）
+function setupContextMenu(lang) {
+  const t = menuDict[lang] || menuDict.en;
   chrome.contextMenus.removeAll(() => {
-    // 親メニュー
     chrome.contextMenus.create({
       id: 'downloadImage',
-      title: '画像をダウンロード',
+      title: t.title,
       contexts: ['image'],
     });
+  });
+}
 
-    // サブメニュー（比率ごと）
-    RATIO_ITEMS.forEach(item => {
-      chrome.contextMenus.create({
-        id: item.id,
-        parentId: 'downloadImage',
-        title: item.title,
-        contexts: ['image'],
+// 初回・起動時にストレージから言語を取得してメニュー構築
+function initContextMenu() {
+  const defaultLang = detectDefaultLang();
+  chrome.storage.local.get({ lang: defaultLang }, (items) => {
+    setupContextMenu(items.lang);
+  });
+}
+
+chrome.runtime.onInstalled.addListener(initContextMenu);
+chrome.runtime.onStartup.addListener(initContextMenu);
+
+// ポップアップで言語が変更されたらメニューを再構築
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.lang) {
+    setupContextMenu(changes.lang.newValue);
+  }
+});
+
+// 画像のダウンロード処理本体（コンテキストメニュー＆ダブルクリック共通）
+function generateTimeBaseName() {
+  const d = new Date();
+  const pad = n => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+function downloadImageWithSettings(url, sendResponse = null) {
+  let originalFilename = getFilenameFromUrl(url);
+
+  let origExt = 'png';
+  if (originalFilename.includes('.')) {
+    origExt = originalFilename.split('.').pop().toLowerCase();
+  }
+  let baseName = generateTimeBaseName();
+
+  chrome.storage.local.get({
+    aspectRatio: '1:1',
+    iconSize: 1024,
+    useOriginalSize: false,
+    borderRadius: 22.5,
+    saveFormat: 'png'
+  }, (settings) => {
+    if (settings.useOriginalSize) {
+      settings.aspectRatio = 'original';
+      settings.borderRadius = 0;
+    }
+
+    settings.originalExt = origExt;
+    const ext = settings.saveFormat === 'original' ? origExt : 
+                (settings.saveFormat === 'jpeg' ? 'jpg' : (settings.saveFormat || 'png'));
+    const filename = `${baseName}.${ext}`;
+
+    if (settings.aspectRatio === 'original' && settings.borderRadius === 0 && settings.saveFormat === 'original') {
+      chrome.downloads.download({
+        url: url,
+        filename: filename,
+        saveAs: false,
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error('Download failed:', chrome.runtime.lastError.message);
+          if (sendResponse) sendResponse({ error: chrome.runtime.lastError.message });
+        } else {
+          console.log(`Bypass canvas download: ${filename} (ID: ${downloadId})`);
+          if (sendResponse) sendResponse({ success: true, downloadId: downloadId });
+        }
+      });
+      return;
+    }
+
+    processImageToIOSIcon(url, settings).then(dataUrl => {
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: filename,
+        saveAs: false,
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error('Download failed:', chrome.runtime.lastError.message);
+          if (sendResponse) sendResponse({ error: chrome.runtime.lastError.message });
+        } else {
+          console.log(`Download started: ${filename} (ID: ${downloadId})`);
+          if (sendResponse) sendResponse({ success: true, downloadId: downloadId });
+        }
+      });
+    }).catch(err => {
+      console.error('Image processing failed:', err);
+      // Fallback to original
+      chrome.downloads.download({
+        url: url,
+        filename: originalFilename,
+        saveAs: false,
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          if (sendResponse) sendResponse({ error: chrome.runtime.lastError.message });
+        } else {
+          if (sendResponse) sendResponse({ success: true, downloadId: downloadId });
+        }
       });
     });
   });
 }
 
-chrome.runtime.onInstalled.addListener(setupContextMenu);
-chrome.runtime.onStartup.addListener(setupContextMenu);
-
 // 右クリックメニュークリック時の処理
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  const clickedItem = RATIO_ITEMS.find(item => item.id === info.menuItemId);
-  if (clickedItem && info.srcUrl) {
-    const url = info.srcUrl;
-    let originalFilename = getFilenameFromUrl(url);
-    let baseName = originalFilename.includes('.')
-      ? originalFilename.substring(0, originalFilename.lastIndexOf('.'))
-      : originalFilename;
-    const filename = `${baseName}.png`;
-
-    chrome.storage.local.get({
-      iconSize: 1024,
-      useOriginalSize: false,
-      borderRadius: 22.5
-    }, (settings) => {
-      // コンテキストメニューで選ばれた比率を上書き
-      settings.aspectRatio = clickedItem.ratio;
-      // オリジナルサイズの場合は useOriginalSize を強制 true
-      if (clickedItem.ratio === 'original') {
-        settings.useOriginalSize = true;
-      }
-
-      processImageToIOSIcon(url, settings).then(dataUrl => {
-        chrome.downloads.download({
-          url: dataUrl,
-          filename: filename,
-          saveAs: false,
-        }, (downloadId) => {
-          if (chrome.runtime.lastError) {
-            console.error('Download failed:', chrome.runtime.lastError.message);
-          } else {
-            console.log(`Context menu download started: ${filename} [${clickedItem.ratio}] (ID: ${downloadId})`);
-          }
-        });
-      }).catch(err => {
-        console.error('Image processing failed:', err);
-        chrome.downloads.download({
-          url: url,
-          filename: originalFilename,
-          saveAs: false,
-        });
+  if (info.menuItemId === 'downloadImage' && info.srcUrl) {
+    if (tab && tab.id) {
+      chrome.tabs.sendMessage(tab.id, {
+        action: 'openCropModal',
+        srcUrl: info.srcUrl
+      }, (resp) => {
+        // If content script is not loaded or error, fallback to normal download
+        if (chrome.runtime.lastError) {
+          downloadImageWithSettings(info.srcUrl);
+        }
       });
-    });
+    } else {
+      downloadImageWithSettings(info.srcUrl);
+    }
   }
 });
 
@@ -151,13 +218,17 @@ async function processImageToIOSIcon(url, settings) {
   } else if (settings.aspectRatio === '9:16') {
     ratioW = 9; ratioH = 16;
   } else if (settings.aspectRatio === 'original') {
-    ratioW = sw; ratioH = sh;
+    if (settings.crop) {
+      ratioW = settings.crop.sw; ratioH = settings.crop.sh;
+    } else {
+      ratioW = sw; ratioH = sh;
+    }
   }
 
   // Determine base size (longest side)
   let baseSize = settings.iconSize || 1024;
   if (settings.useOriginalSize) {
-    baseSize = Math.max(sw, sh);
+    baseSize = settings.crop ? Math.max(settings.crop.sw, settings.crop.sh) : Math.max(sw, sh);
   }
 
   let outW = baseSize;
@@ -204,19 +275,34 @@ async function processImageToIOSIcon(url, settings) {
 
   let sx = 0, sy = 0, sWidth = sw, sHeight = sh;
 
-  if (sourceRatio > targetRatio) {
-    // Source is wider than target -> crop horizontally
-    sWidth = sh * targetRatio;
-    sx = (sw - sWidth) / 2;
-  } else if (sourceRatio < targetRatio) {
-    // Source is taller than target -> crop vertically
-    sHeight = sw / targetRatio;
-    sy = (sh - sHeight) / 2;
+  if (settings.crop) {
+    sx = settings.crop.sx;
+    sy = settings.crop.sy;
+    sWidth = settings.crop.sw;
+    sHeight = settings.crop.sh;
+  } else {
+    if (sourceRatio > targetRatio) {
+      // Source is wider than target -> crop horizontally
+      sWidth = sh * targetRatio;
+      sx = (sw - sWidth) / 2;
+    } else if (sourceRatio < targetRatio) {
+      // Source is taller than target -> crop vertically
+      sHeight = sw / targetRatio;
+      sy = (sh - sHeight) / 2;
+    }
   }
 
   ctx.drawImage(bitmap, sx, sy, sWidth, sHeight, 0, 0, outW, outH);
 
-  const outBlob = await canvas.convertToBlob({ type: 'image/png' });
+  let mimeType = 'image/png';
+  if (settings.saveFormat === 'original' && settings.originalExt) {
+    if (settings.originalExt === 'jpg' || settings.originalExt === 'jpeg') mimeType = 'image/jpeg';
+    else if (settings.originalExt === 'webp') mimeType = 'image/webp';
+  } else if (settings.saveFormat !== 'original') {
+    mimeType = settings.saveFormat === 'jpeg' ? 'image/jpeg' : 
+               settings.saveFormat === 'webp' ? 'image/webp' : 'image/png';
+  }
+  const outBlob = await canvas.convertToBlob({ type: mimeType });
 
   return new Promise((resolve, reject) => {
     if (typeof FileReader !== 'undefined') {
@@ -232,7 +318,7 @@ async function processImageToIOSIcon(url, settings) {
         for (let i = 0; i < len; i++) {
           binary += String.fromCharCode(bytes[i]);
         }
-        resolve(`data:image/png;base64,${btoa(binary)}`);
+        resolve(`data:${mimeType};base64,${btoa(binary)}`);
       }).catch(reject);
     }
   });
@@ -241,22 +327,38 @@ async function processImageToIOSIcon(url, settings) {
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'downloadImage' && message.url) {
+    downloadImageWithSettings(message.url, sendResponse);
+    return true;
+  }
+
+  if (message.action === 'downloadCroppedImage' && message.url && message.crop) {
     const url = message.url;
     let originalFilename = getFilenameFromUrl(url);
 
-    // Force PNG extension
-    let baseName = originalFilename;
+    let origExt = 'png';
     if (originalFilename.includes('.')) {
-      baseName = originalFilename.substring(0, originalFilename.lastIndexOf('.'));
+      origExt = originalFilename.split('.').pop().toLowerCase();
     }
-    const filename = `${baseName}.png`;
+    let baseName = generateTimeBaseName();
 
     chrome.storage.local.get({
       aspectRatio: '1:1',
       iconSize: 1024,
       useOriginalSize: false,
-      borderRadius: 22.5
+      borderRadius: 22.5,
+      saveFormat: 'png'
     }, (settings) => {
+      if (settings.useOriginalSize) {
+        settings.aspectRatio = 'original';
+        settings.borderRadius = 0;
+      }
+      
+      settings.crop = message.crop; 
+      settings.originalExt = origExt;
+      const ext = settings.saveFormat === 'original' ? origExt : 
+                  (settings.saveFormat === 'jpeg' ? 'jpg' : (settings.saveFormat || 'png'));
+      const filename = `${baseName}_cropped.${ext}`;
+
       processImageToIOSIcon(url, settings).then(dataUrl => {
         chrome.downloads.download({
           url: dataUrl,
@@ -267,28 +369,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.error('Download failed:', chrome.runtime.lastError.message);
             sendResponse({ error: chrome.runtime.lastError.message });
           } else {
-            console.log(`Download started: ${filename} (ID: ${downloadId})`);
+            console.log(`Cropped download started: ${filename} (ID: ${downloadId})`);
             sendResponse({ success: true, downloadId: downloadId });
           }
         });
       }).catch(err => {
-        console.error('Image processing failed:', err);
-        // Fallback to original
-        chrome.downloads.download({
-          url: url,
-          filename: originalFilename,
-          saveAs: false,
-        }, (downloadId) => {
-          if (chrome.runtime.lastError) {
-            sendResponse({ error: chrome.runtime.lastError.message });
-          } else {
-            sendResponse({ success: true, downloadId: downloadId });
-          }
-        });
+        console.error('Image crop processing failed:', err);
+        sendResponse({ error: err.toString() });
       });
     });
 
-    // Return true to indicate we'll call sendResponse asynchronously
     return true;
   }
 });
