@@ -14,6 +14,8 @@ const dict = {
     lblOrigSize: "Original Size",
     lblRadius: "Corner Radius (%)",
     lblHint: "Hint: iOS icon is ~22.5%, SNS round icon is 50%",
+    lblFormat: "Save Format",
+    optFmtOrig: "Original (No Change)",
     saved: "Saved!"
   },
   jp: {
@@ -31,6 +33,8 @@ const dict = {
     lblOrigSize: "元のサイズ",
     lblRadius: "角丸の割合 (%)",
     lblHint: "※iOS風は22.5、SNS用丸アイコンは50",
+    lblFormat: "保存形式",
+    optFmtOrig: "オリジナル (フォーマット変更なし)",
     saved: "保存しました!"
   }
 };
@@ -43,6 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const radiusInput = document.getElementById('borderRadius');
   const statusDiv = document.getElementById('status');
   const themeToggle = document.getElementById('themeToggle');
+
+  const formatSelect = document.getElementById('saveFormat');
 
   // ── テーマ管理 ──
   function applyTheme(theme) {
@@ -77,14 +83,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ブラウザ言語に基づくデフォルト言語を判定
+  function detectDefaultLang() {
+    const uiLang = (chrome.i18n && chrome.i18n.getUILanguage)
+      ? chrome.i18n.getUILanguage()
+      : (navigator.language || 'en');
+    return uiLang.toLowerCase().startsWith('ja') ? 'jp' : 'en';
+  }
+
   // Load current settings from storage
   chrome.storage.local.get({
-    lang: 'en',
+    lang: detectDefaultLang(),
     theme: 'dark',
     aspectRatio: '1:1',
     iconSize: 1024,
     useOriginalSize: false,
-    borderRadius: 22.5
+    borderRadius: 22.5,
+    saveFormat: 'png'
   }, (items) => {
     applyTheme(items.theme);
     langSelect.value = items.lang;
@@ -92,10 +107,14 @@ document.addEventListener('DOMContentLoaded', () => {
     sizeInput.value = items.iconSize;
     originalSizeCheckbox.checked = items.useOriginalSize;
     radiusInput.value = items.borderRadius;
+    formatSelect.value = items.saveFormat;
 
     // Initial UI state
     sizeInput.disabled = items.useOriginalSize;
+    aspectSelect.disabled = items.useOriginalSize;
+    radiusInput.disabled = items.useOriginalSize;
     updateLanguage(items.lang);
+    updatePreview();
   });
 
   function saveSettings() {
@@ -104,22 +123,99 @@ document.addEventListener('DOMContentLoaded', () => {
     const iconSize = parseInt(sizeInput.value, 10) || 1024;
     const useOriginalSize = originalSizeCheckbox.checked;
     const borderRadius = parseFloat(radiusInput.value) || 0;
+    const saveFormat = formatSelect.value;
 
     // Update UI state based on constraints
     sizeInput.disabled = useOriginalSize;
+    aspectSelect.disabled = useOriginalSize;
+    radiusInput.disabled = useOriginalSize;
+
     updateLanguage(lang);
+    updatePreview();
 
     chrome.storage.local.set({
       lang,
       aspectRatio,
       iconSize,
       useOriginalSize,
-      borderRadius
+      borderRadius,
+      saveFormat
     }, () => {
       // Show saved toast msg
       statusDiv.classList.add('show');
       setTimeout(() => statusDiv.classList.remove('show'), 1500);
     });
+  }
+
+  function updatePreview() {
+    const useOriginalSize = originalSizeCheckbox.checked;
+    const ratioVal = useOriginalSize ? 'original' : aspectSelect.value;
+    const radPercent = useOriginalSize ? 0 : (parseFloat(radiusInput.value) || 0);
+    const sizeVal = parseInt(sizeInput.value, 10) || 1024;
+    
+    const previewBox = document.getElementById('previewBox');
+    const previewText = document.getElementById('previewText');
+    const lang = langSelect.value;
+    
+    // px入力値に応じてプレビューボックスの基準サイズをスケールさせる
+    const uiMaxSize = 72;
+    let maxSize = uiMaxSize;
+    if (!useOriginalSize) {
+      maxSize = Math.max(24, Math.min(uiMaxSize, (sizeVal / 1024) * uiMaxSize));
+    }
+    
+    let boxW = 0, boxH = 0;
+    let isBypassed = useOriginalSize; // 「元のサイズ」にチェックがある場合のみ完全バイパス表示
+    let textLabel = "";
+    
+    if (ratioVal.includes('16:9')) {
+      boxW = maxSize; boxH = maxSize * (9/16); textLabel = "16:9";
+    } else if (ratioVal.includes('4:3')) {
+      boxW = maxSize; boxH = maxSize * (3/4); textLabel = "4:3";
+    } else if (ratioVal.includes('3:4')) {
+      boxH = maxSize; boxW = maxSize * (3/4); textLabel = "3:4";
+    } else if (ratioVal.includes('9:16')) {
+      boxH = maxSize; boxW = maxSize * (9/16); textLabel = "9:16";
+    } else if (ratioVal.includes('1:1')) {
+      boxW = maxSize; boxH = maxSize; textLabel = "1:1";
+    } else {
+      // 比率がオリジナル（切り抜きなし）の場合は汎用の図形(4:3)を使って角丸を表現
+      boxW = maxSize; boxH = maxSize * (3/4);
+      textLabel = dict[lang]?.optOrig || "Original";
+    }
+    
+    if (isBypassed) {
+      previewBox.style.width = '80%';
+      previewBox.style.height = '60%';
+      previewBox.style.background = 'transparent';
+      previewBox.style.border = '2px dashed var(--hint)';
+      previewBox.style.borderRadius = '4px';
+      previewText.textContent = textLabel;
+      previewText.style.color = 'var(--text)';
+      previewText.style.textShadow = 'none';
+      previewText.style.fontSize = '12px';
+    } else {
+      previewBox.style.width = boxW + 'px';
+      previewBox.style.height = boxH + 'px';
+      previewBox.style.background = 'var(--accent)';
+      previewBox.style.border = 'none';
+      
+      // 角丸適用
+      const minSide = Math.min(boxW, boxH);
+      const radPx = minSide * (radPercent / 100);
+      previewBox.style.borderRadius = radPx + 'px';
+      
+      previewText.textContent = textLabel;
+      previewText.style.color = '#fff';
+      previewText.style.textShadow = '0 1px 2px rgba(0,0,0,0.5)';
+      
+      // サイズが小さすぎるときは文字を小さくする
+      if (maxSize < 40) {
+        previewText.style.fontSize = '9px';
+      } else {
+        previewText.style.fontSize = '12px';
+      }
+    }
   }
 
   // Handle preset combinations
@@ -142,6 +238,50 @@ document.addEventListener('DOMContentLoaded', () => {
   // Handle immediate change events (for select/checkbox)
   langSelect.addEventListener('change', saveSettings);
   originalSizeCheckbox.addEventListener('change', saveSettings);
+  formatSelect.addEventListener('change', saveSettings);
+
+  // マウススクロールによる値の変更機能
+  const scrollElements = [langSelect, aspectSelect, sizeInput, radiusInput, formatSelect];
+  scrollElements.forEach(el => {
+    el.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (el.disabled) return;
+
+      if (el.tagName === 'SELECT') {
+        const idx = el.selectedIndex;
+        const maxIdx = el.options.length - 1;
+        let newIdx = idx;
+        if (e.deltaY > 0) newIdx = Math.min(idx + 1, maxIdx);
+        else if (e.deltaY < 0) newIdx = Math.max(idx - 1, 0);
+        
+        if (newIdx !== idx) {
+          el.selectedIndex = newIdx;
+          el.dispatchEvent(new Event('change'));
+        }
+      } else if (el.tagName === 'INPUT' && el.type === 'number') {
+        let val = parseFloat(el.value);
+        let step = parseFloat(el.getAttribute('step')) || 1;
+        const min = parseFloat(el.getAttribute('min')) || 0;
+        const max = parseFloat(el.getAttribute('max')) || Infinity;
+        
+        // iconSizeの場合は1スクロールで大きく変化させる
+        if (el.id === 'iconSize') step = 32;
+
+        if (e.deltaY > 0) val -= step;
+        else if (e.deltaY < 0) val += step;
+        
+        // 小数点の誤差補正
+        val = Math.round(val * 1000) / 1000;
+        
+        // min/max制限
+        if (val < min) val = min;
+        if (val > max) val = max;
+        
+        el.value = val;
+        el.dispatchEvent(new Event('input'));
+      }
+    });
+  });
 
   // Debounced input handlers for number inputs
   let timeout;
